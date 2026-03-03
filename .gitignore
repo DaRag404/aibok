@@ -1,0 +1,23 @@
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/*.pyc
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+
+# Node
+node_modules/
+
+# Tauri / Rust
+src-tauri/target/
+
+# Build output
+dist/
+
+# OS
+.DS_Store
+
+# Env
+.env
+.env.local

@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pdfminer.six
+pytesseract
+pillow
+httpx
+python-multipart
+sqlalchemy>=2.0
+aiosqlite
