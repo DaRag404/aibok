@@ -17,11 +17,16 @@ export async function uploadInvoice(file) {
   return res.json();
 }
 
-export async function bookInvoice(invoiceData, lines) {
+export async function bookInvoice(invoiceData, lines, pdfFile) {
+  const formData = new FormData();
+  formData.append("invoice_data", JSON.stringify({ ...invoiceData, lines }));
+  if (pdfFile) {
+    formData.append("pdf", pdfFile);
+  }
+
   const res = await fetch(`${BASE_URL}/book`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...invoiceData, lines }),
+    body: formData,
   });
 
   if (!res.ok) {
@@ -34,10 +39,12 @@ export async function bookInvoice(invoiceData, lines) {
 
 export async function fetchInvoices() {
   const res = await fetch(`${BASE_URL}/invoices`);
-  if (!res.ok) {
-    throw new Error("Kunde inte hämta fakturor");
-  }
+  if (!res.ok) throw new Error("Kunde inte hämta fakturor");
   return res.json();
+}
+
+export function invoicePdfUrl(id) {
+  return `${BASE_URL}/invoices/${id}/pdf`;
 }
 
 export async function checkHealth() {

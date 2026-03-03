@@ -27,6 +27,7 @@ class Invoice(Base):
     is_credit = Column(Boolean, default=False)
     skip_payment = Column(Boolean, default=False)
     booked_at = Column(DateTime, default=datetime.utcnow)
+    pdf_filename = Column(String, nullable=True)
 
     lines = relationship("AccountingLine", back_populates="invoice", cascade="all, delete-orphan")
 

@@ -1,9 +1,13 @@
+import json
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import FastAPI, UploadFile, HTTPException, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -11,6 +15,9 @@ from sqlalchemy.orm import selectinload
 from database import init_db, AsyncSessionLocal, Invoice, AccountingLine
 from pdf_parser import extract_text_from_pdf
 from ollama_client import analyze_invoice_text, check_ollama_available
+
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 
 @asynccontextmanager
@@ -30,26 +37,6 @@ app.add_middleware(
 
 
 # --- Pydantic schemas ---
-
-class LineIn(BaseModel):
-    account: str
-    vat_code: str = ""
-    net_amount: float = 0.0
-
-
-class BookRequest(BaseModel):
-    supplier: str
-    invoice_date: Optional[str] = None
-    due_date: Optional[str] = None
-    invoice_number: Optional[str] = None
-    total_amount: float = 0.0
-    vat_amount: float = 0.0
-    currency: str = "SEK"
-    message: str = ""
-    is_credit: bool = False
-    skip_payment: bool = False
-    lines: List[LineIn]
-
 
 class LineOut(BaseModel):
     account: str
@@ -73,6 +60,7 @@ class InvoiceOut(BaseModel):
     is_credit: bool
     skip_payment: bool
     booked_at: datetime
+    pdf_filename: Optional[str]
     lines: List[LineOut]
 
     class Config:
@@ -127,40 +115,60 @@ async def analyze_invoice(file: UploadFile):
 
 
 @app.post("/book", response_model=dict)
-async def book_invoice(req: BookRequest):
+async def book_invoice(
+    invoice_data: str = Form(...),
+    pdf: Optional[UploadFile] = File(None),
+):
+    try:
+        data = json.loads(invoice_data)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="Ogiltig JSON i invoice_data.")
+
+    lines_raw = data.pop("lines", [])
+
     # Server-side balance validation
     vat_rates = {"MP1": 0.25, "MP2": 0.12, "MP3": 0.06, "MF": 0.0}
-    net = sum(l.net_amount for l in req.lines)
-    vat = sum(l.net_amount * vat_rates.get(l.vat_code, 0.0) for l in req.lines)
+    net = sum(float(l.get("net_amount", 0)) for l in lines_raw)
+    vat = sum(float(l.get("net_amount", 0)) * vat_rates.get(l.get("vat_code", ""), 0.0) for l in lines_raw)
     calc_total = round(net + vat, 2)
-    if abs(req.total_amount - calc_total) > 0.05:
+    total_amount = float(data.get("total_amount", 0))
+    if abs(total_amount - calc_total) > 0.05:
         raise HTTPException(
             status_code=422,
-            detail=f"Debet och kredit balanserar inte (diff {req.total_amount - calc_total:.2f}).",
+            detail=f"Debet och kredit balanserar inte (diff {total_amount - calc_total:.2f}).",
         )
+
+    # Save PDF
+    pdf_filename = None
+    if pdf and pdf.filename:
+        pdf_bytes = await pdf.read()
+        if pdf_bytes:
+            pdf_filename = f"{uuid.uuid4()}.pdf"
+            (UPLOAD_DIR / pdf_filename).write_bytes(pdf_bytes)
 
     async with AsyncSessionLocal() as session:
         invoice = Invoice(
-            supplier=req.supplier,
-            invoice_date=req.invoice_date,
-            due_date=req.due_date,
-            invoice_number=req.invoice_number,
-            total_amount=req.total_amount,
-            vat_amount=req.vat_amount,
-            currency=req.currency,
-            message=req.message,
-            is_credit=req.is_credit,
-            skip_payment=req.skip_payment,
+            supplier=data.get("supplier", ""),
+            invoice_date=data.get("invoice_date"),
+            due_date=data.get("due_date"),
+            invoice_number=data.get("invoice_number"),
+            total_amount=total_amount,
+            vat_amount=float(data.get("vat_amount", 0)),
+            currency=data.get("currency", "SEK"),
+            message=data.get("message", ""),
+            is_credit=bool(data.get("is_credit", False)),
+            skip_payment=bool(data.get("skip_payment", False)),
+            pdf_filename=pdf_filename,
         )
         session.add(invoice)
-        await session.flush()  # get invoice.id
+        await session.flush()
 
-        for l in req.lines:
+        for l in lines_raw:
             session.add(AccountingLine(
                 invoice_id=invoice.id,
-                account=l.account,
-                vat_code=l.vat_code,
-                net_amount=l.net_amount,
+                account=l.get("account", ""),
+                vat_code=l.get("vat_code", ""),
+                net_amount=float(l.get("net_amount", 0)),
             ))
 
         await session.commit()
@@ -176,3 +184,19 @@ async def list_invoices():
             .order_by(Invoice.booked_at.desc())
         )
         return result.scalars().all()
+
+
+@app.get("/invoices/{invoice_id}/pdf")
+async def get_invoice_pdf(invoice_id: int):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Invoice).where(Invoice.id == invoice_id))
+        invoice = result.scalar_one_or_none()
+
+    if not invoice or not invoice.pdf_filename:
+        raise HTTPException(status_code=404, detail="PDF saknas för denna faktura.")
+
+    path = UPLOAD_DIR / invoice.pdf_filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="PDF-filen hittades inte på disk.")
+
+    return FileResponse(path, media_type="application/pdf", filename=f"faktura_{invoice_id}.pdf")

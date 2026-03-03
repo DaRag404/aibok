@@ -4,21 +4,23 @@ import InvoiceForm from "./components/InvoiceForm";
 import AccountingEntries from "./components/AccountingEntries";
 import Summary from "./components/Summary";
 import PeriodizationModal from "./components/PeriodizationModal";
-import InvoiceHistory from "./components/InvoiceHistory";
+import InvoiceList from "./components/InvoiceList";
 import { uploadInvoice, bookInvoice } from "./api";
 
 export default function App() {
-  const [view, setView] = useState("new"); // "new" | "history"
+  const [view, setView] = useState("list"); // "list" | "new"
   const [invoiceData, setInvoiceData] = useState(null);
   const [lines, setLines] = useState([]);
+  const [pdfFile, setPdfFile] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [bookingStatus, setBookingStatus] = useState(null); // null | "saving" | "saved" | "error"
+  const [bookingStatus, setBookingStatus] = useState(null);
   const [showPeriodize, setShowPeriodize] = useState(false);
 
   const handleUpload = async (file) => {
     setIsLoading(true);
     setError(null);
+    setPdfFile(file);
     try {
       const data = await uploadInvoice(file);
       setInvoiceData(data);
@@ -35,13 +37,15 @@ export default function App() {
     setBookingStatus("saving");
     setError(null);
     try {
-      await bookInvoice(invoiceData, lines);
+      await bookInvoice(invoiceData, lines, pdfFile);
       setBookingStatus("saved");
       setTimeout(() => {
         setInvoiceData(null);
         setLines([]);
+        setPdfFile(null);
         setBookingStatus(null);
-      }, 2000);
+        setView("list");
+      }, 1500);
     } catch (err) {
       setError(err.message);
       setBookingStatus("error");
@@ -51,11 +55,36 @@ export default function App() {
   const handleCancel = () => {
     setInvoiceData(null);
     setLines([]);
+    setPdfFile(null);
     setError(null);
     setBookingStatus(null);
+    setView("list");
   };
 
   const invoiceTotal = parseFloat(invoiceData?.total_amount) || 0;
+
+  const navItem = (label, targetView, enabled = true) => {
+    const active = view === targetView;
+    if (!enabled) {
+      return (
+        <span className="flex items-center px-4 py-1.5 text-gray-400 cursor-default select-none text-sm">
+          {label}
+        </span>
+      );
+    }
+    return (
+      <a
+        onClick={() => setView(targetView)}
+        className={`flex items-center px-4 py-1.5 text-sm cursor-pointer select-none transition-colors ${
+          active
+            ? "text-gray-800 bg-violet-50 border-r-2 border-violet-600 font-medium"
+            : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+        }`}
+      >
+        {label}
+      </a>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-[#f5f5f5] flex">
@@ -71,29 +100,9 @@ export default function App() {
         </div>
         <div className="flex-1 py-3 text-sm">
           <div className="px-3 py-1.5 text-gray-400 font-medium text-xs uppercase tracking-wide">Inköp</div>
-          <a
-            onClick={() => setView("new")}
-            className={`flex items-center px-4 py-1.5 cursor-pointer select-none transition-colors ${
-              view === "new"
-                ? "text-gray-800 bg-violet-50 border-r-2 border-violet-600 font-medium"
-                : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-            }`}
-          >
-            Leverantörsfakturor
-          </a>
-          <a
-            onClick={() => setView("history")}
-            className={`flex items-center px-4 py-1.5 cursor-pointer select-none transition-colors ${
-              view === "history"
-                ? "text-gray-800 bg-violet-50 border-r-2 border-violet-600 font-medium"
-                : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-            }`}
-          >
-            Leverantörer
-          </a>
-          <a className="flex items-center px-4 py-1.5 text-gray-400 cursor-default select-none">
-            Bildunderlag
-          </a>
+          {navItem("Leverantörsfakturor", "list")}
+          {navItem("Leverantörer", null, false)}
+          {navItem("Bildunderlag", null, false)}
         </div>
         <div className="p-3 text-xs text-gray-400 text-center border-t border-gray-100">
           Lokal AI · ingen data lämnar datorn
@@ -102,13 +111,24 @@ export default function App() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        {view === "history" ? (
-          <InvoiceHistory />
+        {view === "list" ? (
+          <InvoiceList onNew={() => setView("new")} />
         ) : (
           <>
             {/* Top bar */}
             <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
-              <h1 className="text-base font-semibold text-gray-800">Ny leverantörsfaktura</h1>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleCancel}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  title="Tillbaka"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <h1 className="text-base font-semibold text-gray-800">Ny leverantörsfaktura</h1>
+              </div>
               <div className="flex items-center gap-3">
                 <DropZone onUpload={handleUpload} isLoading={isLoading} compact />
                 {error && (
@@ -120,12 +140,9 @@ export default function App() {
             {/* Form */}
             <main className="flex-1 overflow-auto">
               <div className="bg-white mx-6 my-5 rounded border border-gray-200">
-                {/* Invoice header */}
                 <div className="px-6 py-5 border-b border-gray-100">
                   <InvoiceForm data={invoiceData} onChange={setInvoiceData} />
                 </div>
-
-                {/* Kontering table */}
                 <div className="px-6 py-4">
                   <AccountingEntries
                     lines={lines}
@@ -133,8 +150,6 @@ export default function App() {
                     onChange={setLines}
                   />
                 </div>
-
-                {/* Summary + actions */}
                 <div className="px-6 py-5 border-t border-gray-100">
                   <div className="flex justify-end">
                     <div className="w-80">
