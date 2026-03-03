@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Sidebar from "./components/Sidebar";
 import DropZone from "./components/DropZone";
 import InvoiceForm from "./components/InvoiceForm";
 import AccountingEntries from "./components/AccountingEntries";
@@ -7,8 +8,15 @@ import PeriodizationModal from "./components/PeriodizationModal";
 import InvoiceList from "./components/InvoiceList";
 import { uploadInvoice, bookInvoice } from "./api";
 
+// Map sidebar nav IDs → app views
+const NAV_TO_VIEW = {
+  leverantorsfakturor: "list",
+};
+
 export default function App() {
+  const [activeNav, setActiveNav] = useState("leverantorsfakturor");
   const [view, setView] = useState("list"); // "list" | "new"
+
   const [invoiceData, setInvoiceData] = useState(null);
   const [lines, setLines] = useState([]);
   const [pdfFile, setPdfFile] = useState(null);
@@ -16,6 +24,19 @@ export default function App() {
   const [error, setError] = useState(null);
   const [bookingStatus, setBookingStatus] = useState(null);
   const [showPeriodize, setShowPeriodize] = useState(false);
+
+  const handleNavigate = (id) => {
+    const mappedView = NAV_TO_VIEW[id];
+    if (mappedView) {
+      setActiveNav(id);
+      setView(mappedView);
+    }
+    // Other nav items are placeholders – just update active highlight
+  };
+
+  const openNewInvoice = () => {
+    setView("new");
+  };
 
   const handleUpload = async (file) => {
     setIsLoading(true);
@@ -45,6 +66,7 @@ export default function App() {
         setPdfFile(null);
         setBookingStatus(null);
         setView("list");
+        setActiveNav("leverantorsfakturor");
       }, 1500);
     } catch (err) {
       setError(err.message);
@@ -59,60 +81,19 @@ export default function App() {
     setError(null);
     setBookingStatus(null);
     setView("list");
+    setActiveNav("leverantorsfakturor");
   };
 
   const invoiceTotal = parseFloat(invoiceData?.total_amount) || 0;
 
-  const navItem = (label, targetView, enabled = true) => {
-    const active = view === targetView;
-    if (!enabled) {
-      return (
-        <span className="flex items-center px-4 py-1.5 text-gray-400 cursor-default select-none text-sm">
-          {label}
-        </span>
-      );
-    }
-    return (
-      <a
-        onClick={() => setView(targetView)}
-        className={`flex items-center px-4 py-1.5 text-sm cursor-pointer select-none transition-colors ${
-          active
-            ? "text-gray-800 bg-violet-50 border-r-2 border-violet-600 font-medium"
-            : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-        }`}
-      >
-        {label}
-      </a>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-[#f5f5f5] flex">
-      {/* Left nav */}
-      <nav className="w-52 bg-white border-r border-gray-200 flex flex-col shrink-0">
-        <div className="px-4 py-4 border-b border-gray-100">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded bg-violet-600 flex items-center justify-center">
-              <span className="text-white font-bold text-[10px]">ai</span>
-            </div>
-            <span className="font-semibold text-gray-800 text-sm">aibok</span>
-          </div>
-        </div>
-        <div className="flex-1 py-3 text-sm">
-          <div className="px-3 py-1.5 text-gray-400 font-medium text-xs uppercase tracking-wide">Inköp</div>
-          {navItem("Leverantörsfakturor", "list")}
-          {navItem("Leverantörer", null, false)}
-          {navItem("Bildunderlag", null, false)}
-        </div>
-        <div className="p-3 text-xs text-gray-400 text-center border-t border-gray-100">
-          Lokal AI · ingen data lämnar datorn
-        </div>
-      </nav>
+      <Sidebar activeId={activeNav} onNavigate={handleNavigate} />
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         {view === "list" ? (
-          <InvoiceList onNew={() => setView("new")} />
+          <InvoiceList onNew={openNewInvoice} />
         ) : (
           <>
             {/* Top bar */}
