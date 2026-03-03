@@ -6,16 +6,18 @@ import AccountingEntries from "./components/AccountingEntries";
 import Summary from "./components/Summary";
 import PeriodizationModal from "./components/PeriodizationModal";
 import InvoiceList from "./components/InvoiceList";
+import SupplierList from "./components/SupplierList";
 import { uploadInvoice, bookInvoice } from "./api";
 
 // Map sidebar nav IDs → app views
 const NAV_TO_VIEW = {
   leverantorsfakturor: "list",
+  leverantorer: "suppliers",
 };
 
 export default function App() {
   const [activeNav, setActiveNav] = useState("leverantorsfakturor");
-  const [view, setView] = useState("list"); // "list" | "new"
+  const [view, setView] = useState("list"); // "list" | "new" | "suppliers"
 
   const [invoiceData, setInvoiceData] = useState(null);
   const [lines, setLines] = useState([]);
@@ -94,6 +96,8 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0">
         {view === "list" ? (
           <InvoiceList onNew={openNewInvoice} />
+        ) : view === "suppliers" ? (
+          <SupplierList />
         ) : (
           <>
             {/* Top bar */}

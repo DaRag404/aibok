@@ -84,7 +84,7 @@ const NAV = [
     icon: "inbox",
     children: [
       { id: "leverantorsfakturor", label: "Leverantörsfakturor" },
-      { id: "leverantorer", label: "Leverantörer", disabled: true },
+      { id: "leverantorer", label: "Leverantörer" },
       { id: "bildunderlag", label: "Bildunderlag", disabled: true },
     ],
   },

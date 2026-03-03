@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from database import init_db, AsyncSessionLocal, Invoice, AccountingLine
+from database import init_db, AsyncSessionLocal, Invoice, AccountingLine, Supplier
 from pdf_parser import extract_text_from_pdf
 from ollama_client import analyze_invoice_text, check_ollama_available
 
@@ -200,3 +200,85 @@ async def get_invoice_pdf(invoice_id: int):
         raise HTTPException(status_code=404, detail="PDF-filen hittades inte på disk.")
 
     return FileResponse(path, media_type="application/pdf", filename=f"faktura_{invoice_id}.pdf")
+
+
+# --- Supplier endpoints ---
+
+class SupplierIn(BaseModel):
+    name: str
+    org_number: str = ""
+    vat_number: str = ""
+    address: str = ""
+    zip_code: str = ""
+    city: str = ""
+    country: str = "Sverige"
+    email: str = ""
+    phone: str = ""
+    bankgiro: str = ""
+    plusgiro: str = ""
+    payment_terms: int = 30
+    notes: str = ""
+
+
+class SupplierOut(BaseModel):
+    id: int
+    name: str
+    org_number: str
+    vat_number: str
+    address: str
+    zip_code: str
+    city: str
+    country: str
+    email: str
+    phone: str
+    bankgiro: str
+    plusgiro: str
+    payment_terms: int
+    notes: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+@app.get("/suppliers", response_model=List[SupplierOut])
+async def list_suppliers():
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Supplier).order_by(Supplier.name))
+        return result.scalars().all()
+
+
+@app.post("/suppliers", response_model=SupplierOut)
+async def create_supplier(data: SupplierIn):
+    async with AsyncSessionLocal() as session:
+        supplier = Supplier(**data.model_dump())
+        session.add(supplier)
+        await session.commit()
+        await session.refresh(supplier)
+        return supplier
+
+
+@app.put("/suppliers/{supplier_id}", response_model=SupplierOut)
+async def update_supplier(supplier_id: int, data: SupplierIn):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Supplier).where(Supplier.id == supplier_id))
+        supplier = result.scalar_one_or_none()
+        if not supplier:
+            raise HTTPException(status_code=404, detail="Leverantören hittades inte.")
+        for field, value in data.model_dump().items():
+            setattr(supplier, field, value)
+        await session.commit()
+        await session.refresh(supplier)
+        return supplier
+
+
+@app.delete("/suppliers/{supplier_id}")
+async def delete_supplier(supplier_id: int):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Supplier).where(Supplier.id == supplier_id))
+        supplier = result.scalar_one_or_none()
+        if not supplier:
+            raise HTTPException(status_code=404, detail="Leverantören hittades inte.")
+        await session.delete(supplier)
+        await session.commit()
+        return {"ok": True}
