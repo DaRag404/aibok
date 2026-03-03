@@ -125,8 +125,8 @@ function LineRow({ line, onChange, onAdd, onRemove }) {
   );
 }
 
-export default function AccountingEntries({ lines = [], invoiceTotal = 0, onChange }) {
-  const autoRows = computeAutoRows(lines, invoiceTotal);
+export default function AccountingEntries({ lines = [], invoiceTotal = 0, vatAmount = 0, onChange }) {
+  const autoRows = computeAutoRows(lines, invoiceTotal, vatAmount);
 
   const addRow = (afterIndex) => {
     const next = [...lines];

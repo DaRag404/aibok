@@ -1,3 +1,68 @@
+import { useEffect, useState } from "react";
+import { fetchSuppliers } from "../api";
+
+function SupplierSelect({ value, onChange, disabled, className }) {
+  const [suppliers, setSuppliers] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [inputVal, setInputVal] = useState(value || "");
+
+  useEffect(() => {
+    fetchSuppliers().then(setSuppliers).catch(() => {});
+  }, []);
+
+  // Sync when value changes externally (e.g. PDF upload)
+  useEffect(() => {
+    if (!open) setInputVal(value || "");
+  }, [value, open]);
+
+  const filtered = (inputVal
+    ? suppliers.filter(
+        (s) =>
+          s.name.toLowerCase().includes(inputVal.toLowerCase()) ||
+          (s.org_number || "").includes(inputVal)
+      )
+    : suppliers
+  ).slice(0, 20);
+
+  return (
+    <div className="relative w-full">
+      <input
+        type="text"
+        value={inputVal}
+        disabled={disabled}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 160)}
+        onChange={(e) => {
+          setInputVal(e.target.value);
+          onChange(e.target.value);
+        }}
+        className={className}
+        placeholder="Leverantörens namn"
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-20 mt-0.5 max-h-56 w-full overflow-auto rounded border border-gray-200 bg-white shadow-lg text-sm">
+          {filtered.map((s) => (
+            <li
+              key={s.id}
+              onMouseDown={() => {
+                setInputVal(s.name);
+                onChange(s.name);
+                setOpen(false);
+              }}
+              className="flex items-center gap-2 cursor-pointer px-3 py-1.5 hover:bg-violet-50"
+            >
+              <span className="font-medium text-gray-800 truncate">{s.name}</span>
+              {s.org_number && (
+                <span className="text-gray-400 text-xs ml-auto shrink-0">{s.org_number}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function InvoiceForm({ data, onChange }) {
   const set = (field, value) => onChange({ ...data, [field]: value });
 
@@ -17,13 +82,11 @@ export default function InvoiceForm({ data, onChange }) {
         <label className="block text-xs text-gray-500 mb-0.5">
           <span className="text-red-500 mr-0.5">*</span>Leverantör
         </label>
-        <input
-          type="text"
+        <SupplierSelect
           value={v("supplier")}
+          onChange={(val) => set("supplier", val)}
           disabled={disabled}
-          onChange={(e) => set("supplier", e.target.value)}
           className={cls}
-          placeholder="Leverantörens namn"
         />
       </div>
       <div className="flex items-end gap-5 pb-1">

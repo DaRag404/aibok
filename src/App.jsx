@@ -136,6 +136,7 @@ export default function App() {
   };
 
   const invoiceTotal = parseFloat(invoiceData?.total_amount) || 0;
+  const invoiceVat = parseFloat(invoiceData?.vat_amount) || 0;
 
   return (
     <div className="min-h-screen bg-[#f5f5f5] flex">
@@ -180,6 +181,7 @@ export default function App() {
                   <AccountingEntries
                     lines={lines}
                     invoiceTotal={invoiceTotal}
+                    vatAmount={invoiceVat}
                     onChange={setLines}
                   />
                 </div>
@@ -189,6 +191,7 @@ export default function App() {
                       <Summary
                         lines={lines}
                         invoiceTotal={invoiceTotal}
+                        invoiceVat={invoiceVat}
                         currency={invoiceData?.currency || "SEK"}
                         onBook={handleBook}
                         onCancel={handleCancel}

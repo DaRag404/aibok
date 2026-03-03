@@ -122,23 +122,39 @@ export const SYSTEM_ACCOUNT_NAMES = {
   "2643": "Ingående moms 6 %",
 };
 
-// Beräkna auto-rader (moms + leverantörsskuld) från kostnadslinjerna
-export function computeAutoRows(lines, invoiceTotal) {
-  // Summera moms per momskonto
-  const vatByAccount = {};
+// Beräkna auto-rader (moms + leverantörsskuld).
+// vatAmount från fakturahuvudet styr momsbeloppet;
+// linjer med momskod bestämmer fördelningen mellan 2641/2642/2643.
+export function computeAutoRows(lines, invoiceTotal, vatAmount) {
+  const vat = parseFloat(vatAmount) || 0;
+
+  // Beräkna vikter per momskonto baserat på netto * sats
+  const weightByAccount = {};
+  let totalWeight = 0;
   for (const line of lines) {
     const rate = VAT_RATE[line.vat_code] ?? 0;
     if (rate > 0) {
       const account = VAT_ACCOUNT[line.vat_code];
-      vatByAccount[account] = (vatByAccount[account] ?? 0) + (parseFloat(line.net_amount) || 0) * rate;
+      const w = (parseFloat(line.net_amount) || 0) * rate;
+      weightByAccount[account] = (weightByAccount[account] ?? 0) + w;
+      totalWeight += w;
     }
   }
 
-  const vatRows = Object.entries(vatByAccount).map(([account, amount]) => ({
-    account,
-    amount: round2(amount),
-    auto: true,
-  }));
+  let vatRows = [];
+  if (vat !== 0) {
+    if (totalWeight > 0) {
+      // Fördela vatAmount proportionellt
+      vatRows = Object.entries(weightByAccount).map(([account, w]) => ({
+        account,
+        amount: round2(vat * (w / totalWeight)),
+        auto: true,
+      }));
+    } else {
+      // Inga momskoder i linjer ännu → default 2641
+      vatRows = [{ account: "2641", amount: round2(vat), auto: true }];
+    }
+  }
 
   // Leverantörsskuld = negativt totalbelopp (kredit)
   const total = parseFloat(invoiceTotal) || 0;

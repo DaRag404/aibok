@@ -1,11 +1,10 @@
-import { VAT_RATE } from "../bas_accounts";
-
 const fmt = (n) =>
   new Intl.NumberFormat("sv-SE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
 export default function Summary({
   lines = [],
   invoiceTotal = 0,
+  invoiceVat = 0,
   currency = "SEK",
   onBook,
   onCancel,
@@ -14,10 +13,7 @@ export default function Summary({
   isEditing = false,
 }) {
   const netTotal = lines.reduce((s, l) => s + (parseFloat(l.net_amount) || 0), 0);
-  const vatTotal = lines.reduce(
-    (s, l) => s + (parseFloat(l.net_amount) || 0) * (VAT_RATE[l.vat_code] ?? 0),
-    0
-  );
+  const vatTotal = parseFloat(invoiceVat) || 0;
   // Round same way as backend: round(net + vat, 2)
   const calcTotal = Math.round((netTotal + vatTotal) * 100) / 100;
   const total = parseFloat(invoiceTotal) || 0;
