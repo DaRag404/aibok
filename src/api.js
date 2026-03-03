@@ -37,6 +37,22 @@ export async function bookInvoice(invoiceData, lines, pdfFile) {
   return res.json();
 }
 
+export async function updateInvoice(id, invoiceData, lines, pdfFile) {
+  const formData = new FormData();
+  formData.append("invoice_data", JSON.stringify({ ...invoiceData, lines }));
+  if (pdfFile) formData.append("pdf", pdfFile);
+
+  const res = await fetch(`${BASE_URL}/invoices/${id}`, {
+    method: "PUT",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "Kunde inte uppdatera fakturan");
+  }
+  return res.json();
+}
+
 export async function fetchInvoices() {
   const res = await fetch(`${BASE_URL}/invoices`);
   if (!res.ok) throw new Error("Kunde inte hämta fakturor");

@@ -11,12 +11,14 @@ export default function Summary({
   onCancel,
   onPeriodize,
   bookingStatus,
+  isEditing = false,
 }) {
   const netTotal = lines.reduce((s, l) => s + (parseFloat(l.net_amount) || 0), 0);
   const vatTotal = lines.reduce(
     (s, l) => s + (parseFloat(l.net_amount) || 0) * (VAT_RATE[l.vat_code] ?? 0),
     0
   );
+  // Round same way as backend: round(net + vat, 2)
   const calcTotal = Math.round((netTotal + vatTotal) * 100) / 100;
   const total = parseFloat(invoiceTotal) || 0;
   const diff = Math.round((total - calcTotal) * 100) / 100;
@@ -25,12 +27,15 @@ export default function Summary({
   const isSaving = bookingStatus === "saving";
   const isSaved = bookingStatus === "saved";
 
-  const row = (label, value, bold) => (
-    <div className={`flex justify-between py-0.5 text-sm ${bold ? "font-semibold" : ""}`}>
+  const row = (label, value) => (
+    <div className="flex justify-between py-0.5 text-sm">
       <span className="text-gray-600">{label}:</span>
       <span className="font-mono tabular-nums">{fmt(value)}</span>
     </div>
   );
+
+  const bookLabel = isEditing ? "Spara ändringar" : "Bokför";
+  const savedLabel = isEditing ? "Sparad" : "Bokförd";
 
   return (
     <div className="flex flex-col gap-4">
@@ -40,8 +45,9 @@ export default function Summary({
         {row("Belopp exkl. moms", netTotal)}
         {row("Moms", vatTotal)}
         <div className="border-t border-gray-200 mt-1.5 pt-1.5" />
-        <div className={`flex justify-between py-0.5 text-sm font-semibold
-          ${isBalanced || lines.length === 0 ? "text-gray-800" : "text-red-600"}`}>
+        <div className={`flex justify-between py-0.5 text-sm font-semibold ${
+          isBalanced || lines.length === 0 ? "text-gray-800" : "text-red-600"
+        }`}>
           <span>Differens:</span>
           <span className="font-mono tabular-nums">{fmt(diff)}</span>
         </div>
@@ -51,8 +57,7 @@ export default function Summary({
       <div className="flex items-center gap-2 justify-end pt-1 border-t border-gray-200">
         <button
           onClick={onPeriodize}
-          className="px-4 py-1.5 text-sm border border-gray-300 rounded text-gray-600
-            hover:bg-gray-50 transition-colors"
+          className="px-4 py-1.5 text-sm border border-gray-300 rounded text-gray-600 hover:bg-gray-50 transition-colors"
         >
           Periodisera
         </button>
@@ -60,7 +65,7 @@ export default function Summary({
         <button
           disabled={!isBalanced || isSaving || isSaved}
           onClick={onBook}
-          className={`px-6 py-1.5 text-sm rounded font-medium transition-colors min-w-[80px] ${
+          className={`px-5 py-1.5 text-sm rounded font-medium transition-colors min-w-[120px] ${
             isSaved
               ? "bg-green-600 text-white cursor-default"
               : isBalanced && !isSaving
@@ -81,17 +86,16 @@ export default function Summary({
               <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
-              Bokförd
+              {savedLabel}
             </span>
           ) : (
-            "Bokför"
+            bookLabel
           )}
         </button>
 
         <button
           onClick={onCancel}
-          className="px-4 py-1.5 text-sm border border-gray-300 rounded text-gray-600
-            hover:bg-gray-50 transition-colors"
+          className="px-4 py-1.5 text-sm border border-gray-300 rounded text-gray-600 hover:bg-gray-50 transition-colors"
         >
           Avbryt
         </button>

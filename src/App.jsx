@@ -7,12 +7,24 @@ import Summary from "./components/Summary";
 import PeriodizationModal from "./components/PeriodizationModal";
 import InvoiceList from "./components/InvoiceList";
 import SupplierList from "./components/SupplierList";
-import { uploadInvoice, bookInvoice } from "./api";
+import { uploadInvoice, bookInvoice, updateInvoice } from "./api";
 
-// Map sidebar nav IDs → app views
 const NAV_TO_VIEW = {
   leverantorsfakturor: "list",
   leverantorer: "suppliers",
+};
+
+const EMPTY_INVOICE = {
+  supplier: "",
+  is_credit: false,
+  skip_payment: false,
+  invoice_date: "",
+  due_date: "",
+  invoice_number: "",
+  total_amount: "",
+  vat_amount: "",
+  currency: "SEK",
+  message: "",
 };
 
 export default function App() {
@@ -22,6 +34,7 @@ export default function App() {
   const [invoiceData, setInvoiceData] = useState(null);
   const [lines, setLines] = useState([]);
   const [pdfFile, setPdfFile] = useState(null);
+  const [editingId, setEditingId] = useState(null); // null = new, number = editing
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [bookingStatus, setBookingStatus] = useState(null);
@@ -33,10 +46,40 @@ export default function App() {
       setActiveNav(id);
       setView(mappedView);
     }
-    // Other nav items are placeholders – just update active highlight
   };
 
   const openNewInvoice = () => {
+    setEditingId(null);
+    setInvoiceData({ ...EMPTY_INVOICE });
+    setLines([{ account: "", vat_code: "MP1", net_amount: "" }]);
+    setPdfFile(null);
+    setError(null);
+    setBookingStatus(null);
+    setView("new");
+  };
+
+  const handleEdit = (invoice) => {
+    setEditingId(invoice.id);
+    setInvoiceData({
+      supplier: invoice.supplier ?? "",
+      is_credit: invoice.is_credit ?? false,
+      skip_payment: invoice.skip_payment ?? false,
+      invoice_date: invoice.invoice_date ?? "",
+      due_date: invoice.due_date ?? "",
+      invoice_number: invoice.invoice_number ?? "",
+      total_amount: invoice.total_amount ?? "",
+      vat_amount: invoice.vat_amount ?? "",
+      currency: invoice.currency ?? "SEK",
+      message: invoice.message ?? "",
+    });
+    setLines((invoice.lines ?? []).map((l) => ({
+      account: l.account,
+      vat_code: l.vat_code,
+      net_amount: l.net_amount,
+    })));
+    setPdfFile(null);
+    setError(null);
+    setBookingStatus(null);
     setView("new");
   };
 
@@ -60,12 +103,17 @@ export default function App() {
     setBookingStatus("saving");
     setError(null);
     try {
-      await bookInvoice(invoiceData, lines, pdfFile);
+      if (editingId) {
+        await updateInvoice(editingId, invoiceData, lines, pdfFile);
+      } else {
+        await bookInvoice(invoiceData, lines, pdfFile);
+      }
       setBookingStatus("saved");
       setTimeout(() => {
         setInvoiceData(null);
         setLines([]);
         setPdfFile(null);
+        setEditingId(null);
         setBookingStatus(null);
         setView("list");
         setActiveNav("leverantorsfakturor");
@@ -80,6 +128,7 @@ export default function App() {
     setInvoiceData(null);
     setLines([]);
     setPdfFile(null);
+    setEditingId(null);
     setError(null);
     setBookingStatus(null);
     setView("list");
@@ -92,15 +141,13 @@ export default function App() {
     <div className="min-h-screen bg-[#f5f5f5] flex">
       <Sidebar activeId={activeNav} onNavigate={handleNavigate} />
 
-      {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         {view === "list" ? (
-          <InvoiceList onNew={openNewInvoice} />
+          <InvoiceList onNew={openNewInvoice} onEdit={handleEdit} />
         ) : view === "suppliers" ? (
           <SupplierList />
         ) : (
           <>
-            {/* Top bar */}
             <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <button
@@ -112,7 +159,9 @@ export default function App() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
-                <h1 className="text-base font-semibold text-gray-800">Ny leverantörsfaktura</h1>
+                <h1 className="text-base font-semibold text-gray-800">
+                  {editingId ? "Redigera leverantörsfaktura" : "Ny leverantörsfaktura"}
+                </h1>
               </div>
               <div className="flex items-center gap-3">
                 <DropZone onUpload={handleUpload} isLoading={isLoading} compact />
@@ -122,7 +171,6 @@ export default function App() {
               </div>
             </header>
 
-            {/* Form */}
             <main className="flex-1 overflow-auto">
               <div className="bg-white mx-6 my-5 rounded border border-gray-200">
                 <div className="px-6 py-5 border-b border-gray-100">
@@ -146,6 +194,7 @@ export default function App() {
                         onCancel={handleCancel}
                         onPeriodize={() => setShowPeriodize(true)}
                         bookingStatus={bookingStatus}
+                        isEditing={!!editingId}
                       />
                     </div>
                   </div>

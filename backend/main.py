@@ -119,32 +119,8 @@ async def book_invoice(
     invoice_data: str = Form(...),
     pdf: Optional[UploadFile] = File(None),
 ):
-    try:
-        data = json.loads(invoice_data)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=422, detail="Ogiltig JSON i invoice_data.")
-
-    lines_raw = data.pop("lines", [])
-
-    # Server-side balance validation
-    vat_rates = {"MP1": 0.25, "MP2": 0.12, "MP3": 0.06, "MF": 0.0}
-    net = sum(float(l.get("net_amount", 0)) for l in lines_raw)
-    vat = sum(float(l.get("net_amount", 0)) * vat_rates.get(l.get("vat_code", ""), 0.0) for l in lines_raw)
-    calc_total = round(net + vat, 2)
-    total_amount = float(data.get("total_amount", 0))
-    if abs(total_amount - calc_total) > 0.05:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Debet och kredit balanserar inte (diff {total_amount - calc_total:.2f}).",
-        )
-
-    # Save PDF
-    pdf_filename = None
-    if pdf and pdf.filename:
-        pdf_bytes = await pdf.read()
-        if pdf_bytes:
-            pdf_filename = f"{uuid.uuid4()}.pdf"
-            (UPLOAD_DIR / pdf_filename).write_bytes(pdf_bytes)
+    data, lines_raw, total_amount = _parse_and_validate(invoice_data)
+    pdf_filename = await _save_pdf(pdf)
 
     async with AsyncSessionLocal() as session:
         invoice = Invoice(
@@ -162,7 +138,85 @@ async def book_invoice(
         )
         session.add(invoice)
         await session.flush()
+        for l in lines_raw:
+            session.add(AccountingLine(
+                invoice_id=invoice.id,
+                account=l.get("account", ""),
+                vat_code=l.get("vat_code", ""),
+                net_amount=float(l.get("net_amount", 0)),
+            ))
+        await session.commit()
+        return {"id": invoice.id}
 
+
+def _parse_and_validate(invoice_data_str: str):
+    """Parse invoice JSON and validate balance. Returns (data, lines_raw, total_amount)."""
+    try:
+        data = json.loads(invoice_data_str)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="Ogiltig JSON i invoice_data.")
+
+    lines_raw = data.pop("lines", [])
+    vat_rates = {"MP1": 0.25, "MP2": 0.12, "MP3": 0.06, "MF": 0.0}
+    net = sum(float(l.get("net_amount", 0)) for l in lines_raw)
+    vat = sum(float(l.get("net_amount", 0)) * vat_rates.get(l.get("vat_code", ""), 0.0) for l in lines_raw)
+    calc_total = round(net + vat, 2)
+    total_amount = float(data.get("total_amount", 0))
+    if abs(total_amount - calc_total) > 0.05:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Debet och kredit balanserar inte (diff {total_amount - calc_total:.2f}).",
+        )
+    return data, lines_raw, total_amount
+
+
+async def _save_pdf(pdf: Optional[UploadFile]) -> Optional[str]:
+    if pdf and pdf.filename:
+        pdf_bytes = await pdf.read()
+        if pdf_bytes:
+            filename = f"{uuid.uuid4()}.pdf"
+            (UPLOAD_DIR / filename).write_bytes(pdf_bytes)
+            return filename
+    return None
+
+
+@app.put("/invoices/{invoice_id}", response_model=dict)
+async def update_invoice(
+    invoice_id: int,
+    invoice_data: str = Form(...),
+    pdf: Optional[UploadFile] = File(None),
+):
+    data, lines_raw, total_amount = _parse_and_validate(invoice_data)
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Invoice).options(selectinload(Invoice.lines)).where(Invoice.id == invoice_id)
+        )
+        invoice = result.scalar_one_or_none()
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Fakturan hittades inte.")
+
+        # Update fields
+        invoice.supplier = data.get("supplier", "")
+        invoice.invoice_date = data.get("invoice_date")
+        invoice.due_date = data.get("due_date")
+        invoice.invoice_number = data.get("invoice_number")
+        invoice.total_amount = total_amount
+        invoice.vat_amount = float(data.get("vat_amount", 0))
+        invoice.currency = data.get("currency", "SEK")
+        invoice.message = data.get("message", "")
+        invoice.is_credit = bool(data.get("is_credit", False))
+        invoice.skip_payment = bool(data.get("skip_payment", False))
+
+        # Replace PDF if new one uploaded
+        new_pdf = await _save_pdf(pdf)
+        if new_pdf:
+            invoice.pdf_filename = new_pdf
+
+        # Replace accounting lines
+        for line in list(invoice.lines):
+            await session.delete(line)
+        await session.flush()
         for l in lines_raw:
             session.add(AccountingLine(
                 invoice_id=invoice.id,

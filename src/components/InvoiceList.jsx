@@ -11,7 +11,7 @@ const fmtDate = (iso) => {
   return d.toLocaleDateString("sv-SE");
 };
 
-export default function InvoiceList({ onNew }) {
+export default function InvoiceList({ onNew, onEdit }) {
   const [invoices, setInvoices] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -76,7 +76,11 @@ export default function InvoiceList({ onNew }) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {invoices.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-violet-50/40 transition-colors group">
+                  <tr
+                    key={inv.id}
+                    onClick={() => onEdit?.(inv)}
+                    className="hover:bg-violet-50/40 transition-colors group cursor-pointer"
+                  >
                     <td className="px-6 py-3 text-gray-400 text-xs">{fmtDate(inv.booked_at)}</td>
                     <td className="px-6 py-3 font-medium text-gray-800">{inv.supplier}</td>
                     <td className="px-6 py-3 text-gray-500 font-mono text-xs">{inv.invoice_number || "–"}</td>
