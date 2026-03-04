@@ -9,9 +9,6 @@ backend/*.db-wal
 # Node
 node_modules/
 
-# Tauri / Rust
-src-tauri/target/
-
 # Build output
 dist/
 
