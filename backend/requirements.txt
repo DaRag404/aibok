@@ -1,9 +1,9 @@
 fastapi
 uvicorn[standard]
-pdfminer.six
-pytesseract
+openai>=1.0
+pdf2image
 pillow
-httpx
 python-multipart
+python-dotenv
 sqlalchemy>=2.0
 aiosqlite

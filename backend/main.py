@@ -13,8 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from database import init_db, AsyncSessionLocal, Invoice, AccountingLine, Supplier
-from pdf_parser import extract_text_from_pdf
-from ollama_client import analyze_invoice_text, check_ollama_available
+from openai_client import analyze_invoice_pdf, is_configured
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -30,7 +29,7 @@ app = FastAPI(title="aibok API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:1420", "tauri://localhost"],
+    allow_origins=["http://localhost:5173", "http://localhost:4173"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -71,10 +70,9 @@ class InvoiceOut(BaseModel):
 
 @app.get("/health")
 async def health():
-    ollama_ok = await check_ollama_available()
     return {
         "status": "ok",
-        "ollama": "tillgänglig" if ollama_ok else "ej tillgänglig – kör 'ollama serve'",
+        "openai": "konfigurerad" if is_configured() else "saknar OPENAI_API_KEY i .env",
     }
 
 
@@ -84,32 +82,18 @@ async def analyze_invoice(file: UploadFile):
         raise HTTPException(status_code=400, detail="Enbart PDF-filer stöds.")
 
     pdf_bytes = await file.read()
-    if len(pdf_bytes) == 0:
+    if not pdf_bytes:
         raise HTTPException(status_code=400, detail="Filen är tom.")
 
-    try:
-        text = extract_text_from_pdf(pdf_bytes)
-    except RuntimeError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-
-    if not text:
-        raise HTTPException(
-            status_code=422,
-            detail="Kunde inte extrahera text ur PDF:en.",
-        )
-
-    if not await check_ollama_available():
-        raise HTTPException(
-            status_code=503,
-            detail="Ollama är inte igång. Kör 'ollama serve' i en terminal.",
-        )
+    if not is_configured():
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY saknas i .env.")
 
     try:
-        result = await analyze_invoice_text(text)
+        result = await analyze_invoice_pdf(pdf_bytes)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"LLM-fel: {e}")
+        raise HTTPException(status_code=500, detail=f"OpenAI-fel: {e}")
 
     return result
 
@@ -157,10 +141,9 @@ def _parse_and_validate(invoice_data_str: str):
         raise HTTPException(status_code=422, detail="Ogiltig JSON i invoice_data.")
 
     lines_raw = data.pop("lines", [])
-    vat_rates = {"MP1": 0.25, "MP2": 0.12, "MP3": 0.06, "MF": 0.0}
     net = sum(float(l.get("net_amount", 0)) for l in lines_raw)
-    vat = sum(float(l.get("net_amount", 0)) * vat_rates.get(l.get("vat_code", ""), 0.0) for l in lines_raw)
-    calc_total = round(net + vat, 2)
+    vat_amount = float(data.get("vat_amount") or 0)
+    calc_total = round(net + vat_amount, 2)
     total_amount = float(data.get("total_amount", 0))
     if abs(total_amount - calc_total) > 0.05:
         raise HTTPException(
